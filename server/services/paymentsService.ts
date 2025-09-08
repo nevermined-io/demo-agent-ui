@@ -34,9 +34,11 @@ export function initializePayments(
  * @param {string} planId - The plan DID
  * @returns {Promise<number>} - The available credits
  */
-export async function getUserCredits(nvmApiKey: string): Promise<number> {
+export async function getUserCredits(
+  nvmApiKey: string,
+  planId: string
+): Promise<number> {
   const environment = process.env.NVM_ENVIRONMENT || "testing";
-  const planId = process.env.PLAN_ID;
   if (!nvmApiKey || !planId) {
     throw new Error("Missing Nevermined API key or plan DID");
   }
@@ -51,12 +53,14 @@ export async function getUserCredits(nvmApiKey: string): Promise<number> {
  * @param {string} nvmApiKey - Nevermined API key
  * @returns {Promise<{accessToken: string, agentId: string}>} - The access token and agent ID
  */
-export async function getAgentAccessToken(nvmApiKey: string): Promise<{
+export async function getAgentAccessToken(
+  nvmApiKey: string,
+  planId: string
+): Promise<{
   accessToken: string;
   agentId: string;
 }> {
   const environment = process.env.NVM_ENVIRONMENT || "testing";
-  const planId = process.env.PLAN_ID;
   const agentDid = process.env.AGENT_DID;
 
   if (!nvmApiKey || !planId || !agentDid) {
@@ -83,14 +87,15 @@ export async function getAgentAccessToken(nvmApiKey: string): Promise<{
  */
 export async function createTask(
   inputQuery: string,
-  nvmApiKey: string
+  nvmApiKey: string,
+  planId: string
 ): Promise<any> {
   const agentEndpoint = process.env.AGENT_ENDPOINT;
   if (!agentEndpoint) {
     throw new Error("Missing AGENT_ENDPOINT environment variable");
   }
 
-  const { accessToken } = await getAgentAccessToken(nvmApiKey);
+  const { accessToken } = await getAgentAccessToken(nvmApiKey, planId);
 
   const response = await fetch(agentEndpoint, {
     method: "POST",
@@ -209,10 +214,10 @@ export async function orderPlanCredits(
  */
 export async function getBurnTransactionInfo(
   fromBlock: number,
-  nvmApiKey: string
+  nvmApiKey: string,
+  planId: string
 ): Promise<{ txHash: string; credits: string; planId: string } | null> {
   const environment = process.env.NVM_ENVIRONMENT || "testing";
-  const planId = process.env.PLAN_ID;
   if (!nvmApiKey || !planId) {
     throw new Error("Missing config");
   }
@@ -259,14 +264,15 @@ export async function getBurnTransactionInfo(
  */
 export async function getTask(
   task_id: string,
-  nvmApiKey: string
+  nvmApiKey: string,
+  planId: string
 ): Promise<any> {
   const agentEndpoint = process.env.AGENT_ENDPOINT;
   if (!agentEndpoint) {
     throw new Error("Missing AGENT_ENDPOINT environment variable");
   }
 
-  const { accessToken } = await getAgentAccessToken(nvmApiKey);
+  const { accessToken } = await getAgentAccessToken(nvmApiKey, planId);
 
   // Construct the task endpoint URL
   const taskEndpoint = `${agentEndpoint}/${task_id}`;
@@ -293,12 +299,14 @@ export async function getTask(
  * @param {string} nvmApiKey - Nevermined API key
  * @returns {Promise<{ planPrice: string, planCredits: number }>}
  */
-export async function getPlanCost(nvmApiKey: string): Promise<{
+export async function getPlanCost(
+  nvmApiKey: string,
+  planId: string
+): Promise<{
   planPrice: string;
   planCredits: number;
 }> {
   const environment = process.env.NVM_ENVIRONMENT || "testing";
-  const planId = process.env.PLAN_ID;
   if (!nvmApiKey || !planId) {
     throw new Error("Missing config");
   }

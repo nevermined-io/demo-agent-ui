@@ -13,8 +13,8 @@ import { useUserState } from "@/lib/user-state-context";
 import { useChat } from "@/lib/chat-context";
 
 /**
- * Modal for configuring the Nevermined API Key.
- * Allows the user to set and persist the API Key in localStorage.
+ * Modal for configuring the Nevermined API Key and Plan ID.
+ * Allows the user to set and persist the API Key and Plan ID in localStorage.
  * Validates the API Key by calling /api/credit before saving.
  * @component
  * @param {boolean} open - Whether the modal is open
@@ -39,8 +39,15 @@ function SettingsModalContent({
   onClose: () => void;
   onApiKeySaved?: () => void;
 }) {
-  const { apiKey, setApiKey, credits, setCredits, refreshCredits } =
-    useUserState();
+  const {
+    apiKey,
+    setApiKey,
+    credits,
+    setCredits,
+    refreshCredits,
+    planId,
+    setPlanId,
+  } = useUserState();
   const [touched, setTouched] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -48,11 +55,14 @@ function SettingsModalContent({
   const [burnLoading, setBurnLoading] = useState(false);
   const [burnError, setBurnError] = useState("");
   const [burnSuccess, setBurnSuccess] = useState("");
+  const [localPlanId, setLocalPlanId] = useState("");
 
   useEffect(() => {
     if (open) {
       const stored = localStorage.getItem("nvmApiKey") || "";
       setApiKey(stored);
+      const storedPlan = localStorage.getItem("nvmPlanId") || "";
+      setLocalPlanId(storedPlan);
       setTouched(false);
       setError("");
       setLoading(false);
@@ -86,6 +96,10 @@ function SettingsModalContent({
       });
       if (!resp.ok) throw new Error("Invalid API Key");
       localStorage.setItem("nvmApiKey", apiKey.trim());
+      if (localPlanId.trim()) {
+        localStorage.setItem("nvmPlanId", localPlanId.trim());
+        setPlanId(localPlanId.trim());
+      }
       setTouched(false);
       setLoading(false);
       refreshCredits();
@@ -158,6 +172,28 @@ function SettingsModalContent({
             disabled={loading}
           />
           {error && <div className="text-red-600 text-sm mt-2">{error}</div>}
+        </div>
+        <div className="mt-4 p-4 rounded-lg border bg-muted/40">
+          <div className="mb-2">
+            <div className="text-base font-medium">Plan ID</div>
+            <div className="text-xs text-muted-foreground">
+              Enter the Plan DID to be used for credit checks and burns. You can
+              override the current value returned from checkout here.
+            </div>
+          </div>
+          <Input
+            type="text"
+            placeholder="Enter Plan DID"
+            value={localPlanId}
+            onChange={(e) => {
+              setLocalPlanId(e.target.value);
+              setTouched(true);
+            }}
+            disabled={loading}
+          />
+          <div className="text-xs text-muted-foreground mt-1">
+            Current plan: {planId || "(none)"}
+          </div>
           <DialogFooter className="mt-2">
             <Button onClick={handleSave} disabled={!apiKey.trim() || loading}>
               {loading ? "Validating..." : "Save"}

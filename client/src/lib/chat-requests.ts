@@ -24,6 +24,9 @@ export async function llmRouterRequest(
     headers: {
       "Content-Type": "application/json",
       ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+      ...(localStorage.getItem("nvmPlanId")
+        ? { "X-Plan-Id": String(localStorage.getItem("nvmPlanId")) }
+        : {}),
     },
     body: JSON.stringify({
       message: content,
@@ -45,6 +48,9 @@ export async function orderPlanRequest(): Promise<any> {
     headers: {
       "Content-Type": "application/json",
       ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+      ...(localStorage.getItem("nvmPlanId")
+        ? { "X-Plan-Id": String(localStorage.getItem("nvmPlanId")) }
+        : {}),
     },
   });
   if (!resp.ok) throw new Error("order-plan request failed");
@@ -59,7 +65,12 @@ export async function orderPlanRequest(): Promise<any> {
 export async function titleSummarizeRequest(history: any[]): Promise<any> {
   const resp = await fetch("/api/title/summarize", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(localStorage.getItem("nvmPlanId")
+        ? { "X-Plan-Id": String(localStorage.getItem("nvmPlanId")) }
+        : {}),
+    },
     body: JSON.stringify({ history }),
   });
   if (!resp.ok) throw new Error("title-summarize request failed");
@@ -74,7 +85,12 @@ export async function titleSummarizeRequest(history: any[]): Promise<any> {
 export async function intentSynthesizeRequest(history: any[]): Promise<any> {
   const resp = await fetch("/api/intent/synthesize", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(localStorage.getItem("nvmPlanId")
+        ? { "X-Plan-Id": String(localStorage.getItem("nvmPlanId")) }
+        : {}),
+    },
     body: JSON.stringify({ history }),
   });
   if (!resp.ok) throw new Error("intent-synthesize request failed");
@@ -93,6 +109,9 @@ export async function getPlanCostRequest(): Promise<{
   const resp = await fetch(`/api/plan/cost`, {
     headers: {
       ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+      ...(localStorage.getItem("nvmPlanId")
+        ? { "X-Plan-Id": String(localStorage.getItem("nvmPlanId")) }
+        : {}),
     },
   });
   if (!resp.ok) throw new Error("plan-cost request failed");

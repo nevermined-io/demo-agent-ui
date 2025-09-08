@@ -54,7 +54,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!nvmApiKey) {
         return res.status(401).json({ error: "Missing API Key" });
       }
-      const credit = await getUserCredits(nvmApiKey);
+      const planId =
+        (req.headers["x-plan-id"] as string) || process.env.PLAN_ID || "";
+      if (!planId) {
+        return res.status(500).json({ error: "Missing plan DID" });
+      }
+      const credit = await getUserCredits(nvmApiKey, planId);
       res.json({ credit });
     } catch (err) {
       console.error("Error fetching credit:", err);
@@ -82,7 +87,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const nvmApiKey = authHeader.replace("Bearer ", "").trim();
         if (nvmApiKey) {
           try {
-            credits = await getUserCredits(nvmApiKey);
+            const planId =
+              (req.headers["x-plan-id"] as string) || process.env.PLAN_ID || "";
+            if (planId) {
+              credits = await getUserCredits(nvmApiKey, planId);
+            } else {
+              credits = 0;
+            }
           } catch (e) {
             credits = 0;
           }
@@ -104,7 +115,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
    * @returns {string} message - Confirmation message
    */
   app.post("/api/order-plan", async (req, res) => {
-    const planId = process.env.PLAN_ID;
+    const planId =
+      (req.headers["x-plan-id"] as string) || process.env.PLAN_ID || "";
     if (!planId) {
       return res.status(500).json({ error: "Missing plan DID" });
     }
@@ -177,8 +189,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!nvmApiKey) {
       return res.status(401).json({ error: "Missing API Key" });
     }
+    const planId =
+      (req.headers["x-plan-id"] as string) || process.env.PLAN_ID || "";
+    if (!planId) {
+      return res.status(500).json({ error: "Missing plan DID" });
+    }
     try {
-      const agentResponse = await createTask(inputQuery, nvmApiKey);
+      const agentResponse = await createTask(inputQuery, nvmApiKey, planId);
       return res.status(200).json(agentResponse);
     } catch (error) {
       console.error("Error creating task:", error);
@@ -222,8 +239,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!nvmApiKey) {
       return res.status(401).json({ error: "Missing API Key" });
     }
+    const planId =
+      (req.headers["x-plan-id"] as string) || process.env.PLAN_ID || "";
+    if (!planId) {
+      return res.status(500).json({ error: "Missing plan DID" });
+    }
     try {
-      const result = await getBurnTransactionInfo(Number(fromBlock), nvmApiKey);
+      const result = await getBurnTransactionInfo(
+        Number(fromBlock),
+        nvmApiKey,
+        planId
+      );
       if (result && result.txHash) {
         res.json(result);
       } else {
@@ -254,7 +280,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!nvmApiKey) {
       return res.status(401).json({ error: "Missing API Key" });
     }
-    const task = await getTask(task_id as string, nvmApiKey);
+    const planId =
+      (req.headers["x-plan-id"] as string) || process.env.PLAN_ID || "";
+    if (!planId) {
+      return res.status(500).json({ error: "Missing plan DID" });
+    }
+    const task = await getTask(task_id as string, nvmApiKey, planId);
     res.json(task);
   });
 
@@ -278,7 +309,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(401).json({ error: "Missing API Key" });
     }
     try {
-      const result = await getPlanCost(nvmApiKey);
+      const planId =
+        (req.headers["x-plan-id"] as string) || process.env.PLAN_ID || "";
+      if (!planId) {
+        return res.status(500).json({ error: "Missing plan DID" });
+      }
+      const result = await getPlanCost(nvmApiKey, planId);
       res.json(result);
     } catch (err) {
       res.status(500).json({ error: "Failed to get plan price and credits" });
@@ -300,7 +336,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .status(400)
         .json({ error: "Missing or invalid credits amount" });
     }
-    const planId = process.env.PLAN_ID;
+    const planId =
+      (req.headers["x-plan-id"] as string) || process.env.PLAN_ID || "";
     if (!planId) {
       return res.status(500).json({ error: "Missing plan DID" });
     }

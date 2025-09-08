@@ -66,6 +66,26 @@ export function extractApiKeyFromUrl(cleanUrl: boolean = true): string | null {
 }
 
 /**
+ * Extracts the Plan ID from the URL parameter 'planId'.
+ * @param {boolean} [cleanUrl=true] - Whether to remove the parameter from the URL.
+ * @returns {string | null}
+ */
+export function extractPlanIdFromUrl(cleanUrl: boolean = true): string | null {
+  try {
+    const url = new URL(window.location.href);
+    const value = url.searchParams.get("planId");
+    if (value && cleanUrl) {
+      url.searchParams.delete("planId");
+      const newUrl = `${url.origin}${url.pathname}${url.search}${url.hash}`;
+      window.history.replaceState({}, document.title, newUrl);
+    }
+    return value;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Builds a local link to this same page that encodes checkout intent in query params.
  * The app can detect these params and redirect to Nevermined checkout.
  * @param {string} agentId - The agent identifier.
