@@ -20,6 +20,8 @@ function Router() {
 }
 
 export default function App() {
+  console.log("[demo-agent-ui] App.tsx loaded");
+
   // On mount, if we have a pending action (e.g., returned from checkout), resume it
   function ResumePending() {
     const { initialized } = useUserState();

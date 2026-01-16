@@ -1,3 +1,4 @@
+import { getStoredPlanId } from "./utils";
 /**
  * Funciones de acceso a la API para el chat.
  * @module chat-api
@@ -11,9 +12,7 @@ export async function getCurrentBlockNumber(): Promise<number> {
   const response = await fetch("/api/latest-block", {
     method: "GET",
     headers: {
-      ...(localStorage.getItem("nvmPlanId")
-        ? { "X-Plan-Id": String(localStorage.getItem("nvmPlanId")) }
-        : {}),
+      ...(getStoredPlanId() ? { "X-Plan-Id": String(getStoredPlanId()) } : {}),
     },
   });
   if (!response.ok) throw new Error("Failed to get current block number");
@@ -28,17 +27,17 @@ export async function getCurrentBlockNumber(): Promise<number> {
  */
 export async function sendMessageToAgent(content: string): Promise<{
   response: string;
+  sessionId?: string;
+  creditsRedeemed?: number;
+  remainingBalance?: number;
   txHash?: string;
-  credits?: number;
 }> {
   const apiKey = localStorage.getItem("nvmApiKey");
-  const planId = localStorage.getItem("nvmPlanId") || "";
   const response = await fetch("/api/agent", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-      ...(planId ? { "X-Plan-Id": planId } : {}),
     },
     body: JSON.stringify({ input_query: content }),
   });
@@ -46,8 +45,14 @@ export async function sendMessageToAgent(content: string): Promise<{
   const data = await response.json();
   return {
     response: data.output,
-    txHash: data.redemptionResult.txHash,
-    credits: data.redemptionResult.creditsRedeemed,
+    sessionId: data.sessionId,
+    creditsRedeemed: data.payment?.creditsRedeemed
+      ? parseInt(data.payment.creditsRedeemed, 10)
+      : undefined,
+    remainingBalance: data.payment?.remainingBalance
+      ? parseInt(data.payment.remainingBalance, 10)
+      : undefined,
+    txHash: data.settlement?.txHash,
   };
 }
 
@@ -58,17 +63,15 @@ export async function sendMessageToAgent(content: string): Promise<{
  */
 export async function getTask(task_id: string): Promise<any> {
   const apiKey = localStorage.getItem("nvmApiKey");
-  const planId = localStorage.getItem("nvmPlanId") || "";
   const response = await fetch(`/api/task?task_id=${task_id}`, {
     method: "GET",
     headers: {
       "Content-Type": "application/json",
       ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-      ...(planId ? { "X-Plan-Id": planId } : {}),
     },
   });
 
-  if (!response.ok) throw new Error("Failed to retrieve credits burned");
+  if (!response.ok) throw new Error("Failed to retrieve task");
   const data = await response.json();
   return data;
 }
@@ -82,7 +85,7 @@ export async function getBurnTransaction(
   blockNumber: number
 ): Promise<any | null> {
   const apiKey = localStorage.getItem("nvmApiKey");
-  const planId = localStorage.getItem("nvmPlanId") || "";
+  const planId = getStoredPlanId() || "";
   const burnTxResp = await fetch(`/api/find-burn-tx?fromBlock=${blockNumber}`, {
     method: "GET",
     headers: {

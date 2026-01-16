@@ -1,6 +1,8 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 
+console.log("[demo-agent-ui] utils.ts loaded");
+
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
@@ -105,5 +107,60 @@ export function buildLocalCheckoutLink(
     return url.toString();
   } catch {
     return "";
+  }
+}
+
+/**
+ * Returns the localStorage key for storing the Plan ID, namespaced for HTTP agent.
+ * @returns {string}
+ */
+export function getPlanIdStorageKey(): string {
+  console.log(
+    "[demo-agent-ui] getPlanIdStorageKey called - returning nvmPlanId_http"
+  );
+  return "nvmPlanId_http";
+}
+
+/**
+ * Gets the stored Plan ID for HTTP agent only (no legacy fallback).
+ * @returns {string}
+ */
+export function getStoredPlanId(): string {
+  try {
+    const scopedKey = getPlanIdStorageKey();
+    const scopedValue = localStorage.getItem(scopedKey);
+    console.log(
+      "[demo-agent-ui] getStoredPlanId - scopedKey:",
+      scopedKey,
+      "scopedValue:",
+      scopedValue
+    );
+    return scopedValue || "";
+  } catch (error) {
+    console.warn("[demo-agent-ui] getStoredPlanId error:", error);
+    return "";
+  }
+}
+
+/**
+ * Sets the stored Plan ID for HTTP agent.
+ * @param {string} planId
+ */
+export function setStoredPlanId(planId: string): void {
+  try {
+    const scopedKey = getPlanIdStorageKey();
+    console.log(
+      "[demo-agent-ui] setStoredPlanId - scopedKey:",
+      scopedKey,
+      "planId:",
+      planId
+    );
+    localStorage.setItem(scopedKey, planId);
+    console.log(
+      "[demo-agent-ui] setStoredPlanId - Successfully stored in",
+      scopedKey
+    );
+  } catch (error) {
+    console.warn("[demo-agent-ui] setStoredPlanId error:", error);
   }
 }

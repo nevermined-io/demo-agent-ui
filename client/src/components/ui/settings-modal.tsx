@@ -11,6 +11,7 @@ import { Button } from "./button";
 import { Slider } from "./slider";
 import { useUserState } from "@/lib/user-state-context";
 import { useChat } from "@/lib/chat-context";
+import { getStoredPlanId, setStoredPlanId } from "@/lib/utils";
 
 /**
  * Modal for configuring the Nevermined API Key and Plan ID.
@@ -61,7 +62,7 @@ function SettingsModalContent({
     if (open) {
       const stored = localStorage.getItem("nvmApiKey") || "";
       setApiKey(stored);
-      const storedPlan = localStorage.getItem("nvmPlanId") || "";
+      const storedPlan = getStoredPlanId() || "";
       setLocalPlanId(storedPlan);
       setTouched(false);
       setError("");
@@ -97,7 +98,7 @@ function SettingsModalContent({
       if (!resp.ok) throw new Error("Invalid API Key");
       localStorage.setItem("nvmApiKey", apiKey.trim());
       if (localPlanId.trim()) {
-        localStorage.setItem("nvmPlanId", localPlanId.trim());
+        setStoredPlanId(localPlanId.trim());
         setPlanId(localPlanId.trim());
       }
       setTouched(false);

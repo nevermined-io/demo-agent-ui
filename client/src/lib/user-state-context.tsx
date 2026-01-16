@@ -1,5 +1,10 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
-import { extractApiKeyFromUrl, extractPlanIdFromUrl } from "./utils";
+import {
+  extractApiKeyFromUrl,
+  extractPlanIdFromUrl,
+  getStoredPlanId,
+  setStoredPlanId,
+} from "./utils";
 
 /**
  * Context for the global user state (API Key and credits)
@@ -29,13 +34,16 @@ export function useUserState() {
 }
 
 export function UserStateProvider({ children }: { children: React.ReactNode }) {
+  console.log("[demo-agent-ui] UserStateProvider initialized");
+
   // Synchronous initialization
   const [apiKey, setApiKey] = useState(
     () => localStorage.getItem("nvmApiKey") || ""
   );
-  const [planId, setPlanId] = useState<string>(
-    () => localStorage.getItem("nvmPlanId") || ""
-  );
+  const [planId, setPlanId] = useState<string>(() => {
+    console.log("[demo-agent-ui] UserStateProvider - calling getStoredPlanId");
+    return getStoredPlanId();
+  });
   const [credits, setCredits] = useState<number | null>(null);
   const [initialized, setInitialized] = useState(false);
 
@@ -46,7 +54,7 @@ export function UserStateProvider({ children }: { children: React.ReactNode }) {
         setCredits(null);
         return;
       }
-      const planIdHeader = localStorage.getItem("nvmPlanId") || "";
+      const planIdHeader = getStoredPlanId() || "";
       const resp = await fetch("/api/credit", {
         headers: {
           Authorization: `Bearer ${apiKey}`,
@@ -79,7 +87,7 @@ export function UserStateProvider({ children }: { children: React.ReactNode }) {
     }
     const parsedPlan = extractPlanIdFromUrl(true);
     if (parsedPlan) {
-      localStorage.setItem("nvmPlanId", parsedPlan);
+      setStoredPlanId(parsedPlan);
       setPlanId(parsedPlan);
     }
     // We don't include setters in deps to avoid loops
@@ -108,7 +116,10 @@ export function UserStateProvider({ children }: { children: React.ReactNode }) {
         refreshCredits,
         initialized,
         planId,
-        setPlanId,
+        setPlanId: (p: string) => {
+          setStoredPlanId(p);
+          setPlanId(p);
+        },
       }}
     >
       {children}

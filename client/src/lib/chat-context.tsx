@@ -35,11 +35,12 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const agentId =
       (import.meta as any).env?.VITE_AGENT_ID ||
-      (globalThis as any)?.__RUNTIME_CONFIG__?.VITE_AGENT_ID;
-    console.log("[demo-agent-ui] VITE_AGENT_ID =", agentId);
+      (globalThis as any)?.__RUNTIME_CONFIG__?.VITE_AGENT_ID ||
+      (globalThis as any)?.__RUNTIME_CONFIG__?.agentId;
+    console.log("[demo-agent-ui] agentId =", agentId);
     if (!agentId) {
       console.warn(
-        "[demo-agent-ui] Missing VITE_AGENT_ID - checkout links will not include agent id"
+        "[demo-agent-ui] Missing agentId - checkout links will not include agent id"
       );
     }
     const environment =
@@ -254,7 +255,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       try {
         const agentId =
           (import.meta as any).env?.VITE_AGENT_ID ||
-          (globalThis as any)?.__RUNTIME_CONFIG__?.VITE_AGENT_ID;
+          (globalThis as any)?.__RUNTIME_CONFIG__?.VITE_AGENT_ID ||
+          (globalThis as any)?.__RUNTIME_CONFIG__?.agentId;
         const hasApiKey = Boolean(apiKey);
         const checkoutUrl = buildNeverminedCheckoutUrl(agentId, {
           returnApiKey: !hasApiKey,
@@ -309,7 +311,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         try {
           const agentId =
             (import.meta as any).env?.VITE_AGENT_ID ||
-            (globalThis as any)?.__RUNTIME_CONFIG__?.VITE_AGENT_ID;
+            (globalThis as any)?.__RUNTIME_CONFIG__?.VITE_AGENT_ID ||
+            (globalThis as any)?.__RUNTIME_CONFIG__?.agentId;
           const checkoutUrl = buildNeverminedCheckoutUrl(agentId, {
             returnApiKey: needsApiKey,
           });
@@ -451,21 +454,25 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         },
       ]);
 
-      // Handle transaction if present
-      if (agentResponse.txHash) {
+      // Handle payment info if present
+      if (agentResponse.creditsRedeemed) {
         setMessages((prev) => [
           ...prev,
           {
             id: prev.length + 1,
-            content: `Task completed. ${agentResponse.credits} credit${
-              agentResponse.credits === 1 ? "" : "s"
-            } have been deducted from your balance.`,
+            content: `Task completed. ${agentResponse.creditsRedeemed} credit${
+              agentResponse.creditsRedeemed === 1 ? "" : "s"
+            } have been deducted from your balance.${
+              agentResponse.remainingBalance !== undefined
+                ? ` Remaining: ${agentResponse.remainingBalance}`
+                : ""
+            }`,
             type: "nvm-transaction-user",
             isUser: false,
             conversationId: currentConversationId?.toString() || "new",
             timestamp: new Date(),
             txHash: agentResponse.txHash,
-            credits: agentResponse.credits,
+            credits: agentResponse.creditsRedeemed,
           },
         ]);
 
@@ -474,7 +481,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           const data = await getPlanCostRequest();
           const planPrice = Number(data.planPrice);
           const planCredits = Number(data.planCredits);
-          const creditsUsed = Number(agentResponse.credits);
+          const creditsUsed = Number(agentResponse.creditsRedeemed);
           const cost =
             planCredits > 0 ? (planPrice / planCredits) * creditsUsed : 0;
           setMessages((prev) => [

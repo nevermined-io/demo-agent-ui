@@ -1,3 +1,4 @@
+import { getStoredPlanId } from "./utils";
 /**
  * API request helpers for chat-context.
  * All functions wrap fetch calls for chat-related endpoints.
@@ -24,9 +25,7 @@ export async function llmRouterRequest(
     headers: {
       "Content-Type": "application/json",
       ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-      ...(localStorage.getItem("nvmPlanId")
-        ? { "X-Plan-Id": String(localStorage.getItem("nvmPlanId")) }
-        : {}),
+      ...(getStoredPlanId() ? { "X-Plan-Id": String(getStoredPlanId()) } : {}),
     },
     body: JSON.stringify({
       message: content,
@@ -48,9 +47,7 @@ export async function orderPlanRequest(): Promise<any> {
     headers: {
       "Content-Type": "application/json",
       ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-      ...(localStorage.getItem("nvmPlanId")
-        ? { "X-Plan-Id": String(localStorage.getItem("nvmPlanId")) }
-        : {}),
+      ...(getStoredPlanId() ? { "X-Plan-Id": String(getStoredPlanId()) } : {}),
     },
   });
   if (!resp.ok) throw new Error("order-plan request failed");
@@ -67,9 +64,7 @@ export async function titleSummarizeRequest(history: any[]): Promise<any> {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      ...(localStorage.getItem("nvmPlanId")
-        ? { "X-Plan-Id": String(localStorage.getItem("nvmPlanId")) }
-        : {}),
+      ...(getStoredPlanId() ? { "X-Plan-Id": String(getStoredPlanId()) } : {}),
     },
     body: JSON.stringify({ history }),
   });
@@ -87,9 +82,7 @@ export async function intentSynthesizeRequest(history: any[]): Promise<any> {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      ...(localStorage.getItem("nvmPlanId")
-        ? { "X-Plan-Id": String(localStorage.getItem("nvmPlanId")) }
-        : {}),
+      ...(getStoredPlanId() ? { "X-Plan-Id": String(getStoredPlanId()) } : {}),
     },
     body: JSON.stringify({ history }),
   });
@@ -109,9 +102,7 @@ export async function getPlanCostRequest(): Promise<{
   const resp = await fetch(`/api/plan/cost`, {
     headers: {
       ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-      ...(localStorage.getItem("nvmPlanId")
-        ? { "X-Plan-Id": String(localStorage.getItem("nvmPlanId")) }
-        : {}),
+      ...(getStoredPlanId() ? { "X-Plan-Id": String(getStoredPlanId()) } : {}),
     },
   });
   if (!resp.ok) throw new Error("plan-cost request failed");

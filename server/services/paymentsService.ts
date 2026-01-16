@@ -1,4 +1,9 @@
-import { Payments, EnvironmentName } from "@nevermined-io/payments";
+import {
+  Payments,
+  EnvironmentName,
+  decodeAccessToken,
+  type X402PaymentRequired,
+} from "@nevermined-io/payments";
 import { PlanDDOHelper } from "./planDDOHelper";
 import {
   hasSufficientERC20Balance,
@@ -6,6 +11,11 @@ import {
   getCurrentBlockNumber,
   findBurnEvent,
 } from "./blockchainService";
+
+/**
+ * Cache for x402 access tokens, keyed by "planId:agentId"
+ */
+const x402TokenCache = new Map<string, string>();
 
 /**
  * Initializes the Nevermined Payments library.
@@ -38,7 +48,7 @@ export async function getUserCredits(
   nvmApiKey: string,
   planId: string
 ): Promise<number> {
-  const environment = process.env.NVM_ENVIRONMENT || "testing";
+  const environment = process.env.NVM_ENVIRONMENT || "staging_sandbox";
   if (!nvmApiKey || !planId) {
     throw new Error("Missing Nevermined API key or plan DID");
   }
@@ -49,74 +59,226 @@ export async function getUserCredits(
 }
 
 /**
- * Gets the agent access token for making direct HTTP requests to the agent.
- * @param {string} nvmApiKey - Nevermined API key
- * @returns {Promise<{accessToken: string, agentId: string}>} - The access token and agent ID
+ * Extracts planId and agentId from X402PaymentRequired.
+ * @param {X402PaymentRequired} paymentRequired - The decoded payment requirements from PAYMENT-REQUIRED header
+ * @returns {{ planId: string; agentId: string }} planId and agentId
+ * @throws {Error} If payment requirements are invalid or missing required fields
  */
-export async function getAgentAccessToken(
-  nvmApiKey: string,
-  planId: string
-): Promise<{
-  accessToken: string;
+function extractPaymentScheme(paymentRequired: X402PaymentRequired): {
+  planId: string;
   agentId: string;
-}> {
-  const environment = process.env.NVM_ENVIRONMENT || "testing";
-  const agentDid = process.env.AGENT_DID;
-
-  if (!nvmApiKey || !planId || !agentDid) {
-    throw new Error("Missing config: nvmApiKey, planId, or agentDid");
+} {
+  const scheme = paymentRequired.accepts?.[0];
+  if (!scheme) {
+    throw new Error("No payment scheme found in payment requirements");
   }
 
-  const payments = initializePayments(nvmApiKey, environment);
-  const agentAccessParams = await payments.agents.getAgentAccessToken(
-    planId,
-    agentDid
-  );
+  const planId = scheme.planId;
+  const agentId = scheme.extra?.agentId;
 
-  return {
-    accessToken: agentAccessParams.accessToken,
-    agentId: agentDid,
-  };
+  if (!planId || !agentId) {
+    throw new Error("Missing planId or agentId in payment requirements");
+  }
+
+  return { planId, agentId };
 }
 
 /**
- * Calls the agent with the synthesized intent and returns the agent response payload.
+ * Parses and decodes the PAYMENT-REQUIRED header from a 402 response.
+ * @param {Response} response - The HTTP response containing the 402 status
+ * @returns {X402PaymentRequired | null} Decoded payment requirements or null if header is missing/invalid
+ */
+function parsePaymentRequiredHeader(
+  response: Response
+): X402PaymentRequired | null {
+  const header = response.headers.get("payment-required");
+  if (!header) {
+    console.log("[x402] No PAYMENT-REQUIRED header found in 402 response");
+    return null;
+  }
+
+  try {
+    const paymentRequired = decodeAccessToken(header) as X402PaymentRequired;
+    console.log("[x402] Received payment requirements:");
+    console.log(`   Plan ID: ${paymentRequired.accepts?.[0]?.planId}`);
+    console.log(`   Agent ID: ${paymentRequired.accepts?.[0]?.extra?.agentId}`);
+    return paymentRequired;
+  } catch (error) {
+    console.error("[x402] Failed to parse PAYMENT-REQUIRED header:", error);
+    return null;
+  }
+}
+
+/**
+ * Gets a cached x402 token or fetches a new one if not in cache.
+ * @param {Payments} payments - Payments instance
+ * @param {string} planId - The plan identifier
+ * @param {string} agentId - The agent identifier
+ * @returns {Promise<string>} The x402 access token
+ */
+async function getOrFetchX402Token(
+  payments: Payments,
+  planId: string,
+  agentId: string
+): Promise<string> {
+  const cacheKey = `${planId}:${agentId}`;
+  const cachedToken = x402TokenCache.get(cacheKey);
+
+  if (cachedToken) {
+    console.log("[x402] Using cached x402 access token");
+    return cachedToken;
+  }
+
+  console.log("[x402] Obtaining x402 access token...");
+  const result = await payments.x402.getX402AccessToken(planId, agentId);
+  if (!result?.accessToken) {
+    throw new Error("Failed to obtain x402 access token");
+  }
+
+  console.log("[x402] x402 access token obtained successfully");
+  x402TokenCache.set(cacheKey, result.accessToken);
+  return result.accessToken;
+}
+
+/**
+ * Clears the x402 token cache for a specific plan/agent combination.
+ * @param {string} planId - The plan identifier
+ * @param {string} agentId - The agent identifier
+ */
+function clearX402TokenCache(planId: string, agentId: string): void {
+  const cacheKey = `${planId}:${agentId}`;
+  x402TokenCache.delete(cacheKey);
+}
+
+/**
+ * Calls the agent with the synthesized intent using the x402 payment flow.
+ * Implements the full x402 protocol:
+ * 1. Makes initial request without payment token
+ * 2. Receives 402 Payment Required with PAYMENT-REQUIRED header
+ * 3. Obtains x402 access token based on payment requirements (planId/agentId from header)
+ * 4. Retries request with PAYMENT-SIGNATURE header
+ * 5. Processes successful response with payment settlement
+ *
  * @param {string} inputQuery - Synthesized intent to send to the agent
  * @param {string} nvmApiKey - Nevermined API key
  * @returns {Promise<any>} - The agent response
  */
 export async function createTask(
   inputQuery: string,
-  nvmApiKey: string,
-  planId: string
+  nvmApiKey: string
 ): Promise<any> {
   const agentEndpoint = process.env.AGENT_ENDPOINT;
   if (!agentEndpoint) {
     throw new Error("Missing AGENT_ENDPOINT environment variable");
   }
 
-  const { accessToken } = await getAgentAccessToken(nvmApiKey, planId);
+  const environment = process.env.NVM_ENVIRONMENT || "staging_sandbox";
+  const payments = initializePayments(nvmApiKey, environment);
 
-  const response = await fetch(agentEndpoint, {
+  // Step 1: Make initial request WITHOUT PAYMENT-SIGNATURE header
+  console.log("[x402] Making initial request to agent (no payment token)...");
+  const initialResponse = await fetch(agentEndpoint, {
     method: "POST",
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
-      Authorization: `Bearer ${accessToken}`,
     },
-    body: JSON.stringify({
-      input_query: inputQuery,
-    }),
+    body: JSON.stringify({ input_query: inputQuery }),
   });
 
-  if (!response.ok) {
+  // Step 2: If not 402, handle as normal response
+  if (initialResponse.status !== 402) {
+    if (!initialResponse.ok) {
+      throw new Error(
+        `Agent request failed: ${initialResponse.status} ${initialResponse.statusText}`
+      );
+    }
+    // Agent is not x402 protected, return response directly
+    return await initialResponse.json();
+  }
+
+  // Step 3: Handle 402 Payment Required - parse PAYMENT-REQUIRED header
+  console.log("[x402] Received 402 Payment Required");
+  const paymentRequired = parsePaymentRequiredHeader(initialResponse);
+  if (!paymentRequired) {
+    throw new Error("Invalid payment requirements in 402 response");
+  }
+
+  // Step 4: Extract planId and agentId from payment requirements
+  const { planId, agentId } = extractPaymentScheme(paymentRequired);
+
+  // Step 5: Get x402 access token (with caching)
+  const x402Token = await getOrFetchX402Token(payments, planId, agentId);
+
+  // Step 6: Retry request with PAYMENT-SIGNATURE header
+  console.log("[x402] Retrying request with PAYMENT-SIGNATURE header...");
+  const retryResponse = await fetch(agentEndpoint, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      "PAYMENT-SIGNATURE": x402Token,
+    },
+    body: JSON.stringify({ input_query: inputQuery }),
+  });
+
+  // Step 7: Handle retry response
+  if (!retryResponse.ok) {
+    // If still 402, token might be invalid - clear cache and throw
+    if (retryResponse.status === 402) {
+      clearX402TokenCache(planId, agentId);
+      const errorBody = await retryResponse.text().catch(() => "");
+      throw new Error(`Payment still required after retry: ${errorBody}`);
+    }
     throw new Error(
-      `Agent request failed: ${response.status} ${response.statusText}`
+      `Agent request failed after payment: ${retryResponse.status} ${retryResponse.statusText}`
     );
   }
 
-  const result = await response.json();
-  // Return the full agent response as-is; downstream will interpret fields
+  // Step 8: Parse PAYMENT-RESPONSE header if present
+  let settlementInfo: {
+    success?: boolean;
+    txHash?: string;
+  } | null = null;
+
+  const paymentResponseHeader = retryResponse.headers.get("payment-response");
+  if (paymentResponseHeader) {
+    try {
+      const paymentResponse = decodeAccessToken(paymentResponseHeader) as {
+        success?: boolean;
+        transaction?: string;
+      };
+      console.log(
+        "[x402] Payment settled:",
+        paymentResponse.success ? "Success" : "Failed"
+      );
+      if (paymentResponse.transaction) {
+        console.log(
+          `[x402] Transaction: ${paymentResponse.transaction.substring(
+            0,
+            20
+          )}...`
+        );
+      }
+      settlementInfo = {
+        success: paymentResponse.success,
+        txHash: paymentResponse.transaction,
+      };
+    } catch {
+      // Silently ignore parsing errors for payment response header
+    }
+  }
+
+  const result = await retryResponse.json();
+
+  // Merge settlement info into response if available
+  if (settlementInfo) {
+    return {
+      ...result,
+      settlement: settlementInfo,
+    };
+  }
+
   return result;
 }
 
@@ -217,7 +379,7 @@ export async function getBurnTransactionInfo(
   nvmApiKey: string,
   planId: string
 ): Promise<{ txHash: string; credits: string; planId: string } | null> {
-  const environment = process.env.NVM_ENVIRONMENT || "testing";
+  const environment = process.env.NVM_ENVIRONMENT || "staging_sandbox";
   if (!nvmApiKey || !planId) {
     throw new Error("Missing config");
   }
@@ -257,41 +419,74 @@ export async function getBurnTransactionInfo(
 }
 
 /**
- * Gets task details by making a direct HTTP request to the agent.
+ * Gets task details by making a direct HTTP request to the agent using x402 flow.
+ * planId and agentId are extracted from the 402 PAYMENT-REQUIRED header.
  * @param {string} task_id - Task ID
  * @param {string} nvmApiKey - Nevermined API key
  * @returns {Promise<any>} - Task details
  */
 export async function getTask(
   task_id: string,
-  nvmApiKey: string,
-  planId: string
+  nvmApiKey: string
 ): Promise<any> {
   const agentEndpoint = process.env.AGENT_ENDPOINT;
   if (!agentEndpoint) {
     throw new Error("Missing AGENT_ENDPOINT environment variable");
   }
 
-  const { accessToken } = await getAgentAccessToken(nvmApiKey, planId);
+  const environment = process.env.NVM_ENVIRONMENT || "staging_sandbox";
+  const payments = initializePayments(nvmApiKey, environment);
 
   // Construct the task endpoint URL
   const taskEndpoint = `${agentEndpoint}/${task_id}`;
 
-  const response = await fetch(taskEndpoint, {
+  // Step 1: Make initial request WITHOUT PAYMENT-SIGNATURE header
+  const initialResponse = await fetch(taskEndpoint, {
     method: "GET",
     headers: {
       Accept: "application/json",
-      Authorization: `Bearer ${accessToken}`,
     },
   });
 
-  if (!response.ok) {
+  // Step 2: If not 402, handle as normal response
+  if (initialResponse.status !== 402) {
+    if (!initialResponse.ok) {
+      throw new Error(
+        `Agent request failed: ${initialResponse.status} ${initialResponse.statusText}`
+      );
+    }
+    return await initialResponse.json();
+  }
+
+  // Step 3: Handle 402 Payment Required
+  const paymentRequired = parsePaymentRequiredHeader(initialResponse);
+  if (!paymentRequired) {
+    throw new Error("Invalid payment requirements in 402 response");
+  }
+
+  const { planId, agentId } = extractPaymentScheme(paymentRequired);
+  const x402Token = await getOrFetchX402Token(payments, planId, agentId);
+
+  // Step 4: Retry with PAYMENT-SIGNATURE header
+  const retryResponse = await fetch(taskEndpoint, {
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+      "PAYMENT-SIGNATURE": x402Token,
+    },
+  });
+
+  if (!retryResponse.ok) {
+    if (retryResponse.status === 402) {
+      clearX402TokenCache(planId, agentId);
+      throw new Error("Payment still required after retry");
+    }
     throw new Error(
-      `Agent request failed: ${response.status} ${response.statusText}`
+      `Agent request failed: ${retryResponse.status} ${retryResponse.statusText}`
     );
   }
 
-  return await response.json();
+  return await retryResponse.json();
 }
 
 /**
@@ -306,7 +501,7 @@ export async function getPlanCost(
   planPrice: string;
   planCredits: number;
 }> {
-  const environment = process.env.NVM_ENVIRONMENT || "testing";
+  const environment = process.env.NVM_ENVIRONMENT || "staging_sandbox";
   if (!nvmApiKey || !planId) {
     throw new Error("Missing config");
   }
@@ -334,7 +529,7 @@ export async function redeemCredits(
   txHash?: string;
   message: string;
 }> {
-  const environment = process.env.NVM_ENVIRONMENT || "testing";
+  const environment = process.env.NVM_ENVIRONMENT || "staging_sandbox";
   const agentId = process.env.AGENT_DID;
   if (!nvmApiKey || !planId || !agentId) {
     throw new Error("Missing Nevermined API key or plan DID");

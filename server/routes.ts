@@ -170,7 +170,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   /**
    * POST /api/agent
    * Sends the synthesized intent to the agent and returns the agent response.
-   * Requires Authorization header with Bearer token
+   * Uses x402 payment flow: planId and agentId are extracted from 402 response.
+   * Requires Authorization header with Bearer token (nvmApiKey)
    * @body {string} input_query - Synthesized intent
    * @returns {object} - Agent response payload from the agent
    */
@@ -189,13 +190,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!nvmApiKey) {
       return res.status(401).json({ error: "Missing API Key" });
     }
-    const planId =
-      (req.headers["x-plan-id"] as string) || process.env.PLAN_ID || "";
-    if (!planId) {
-      return res.status(500).json({ error: "Missing plan DID" });
-    }
     try {
-      const agentResponse = await createTask(inputQuery, nvmApiKey, planId);
+      const agentResponse = await createTask(inputQuery, nvmApiKey);
       return res.status(200).json(agentResponse);
     } catch (error) {
       console.error("Error creating task:", error);
@@ -262,8 +258,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   /**
    * GET /api/task
-   * Returns the task details for a given task_id
-   * Requires Authorization header with Bearer token
+   * Returns the task details for a given task_id.
+   * Uses x402 payment flow: planId and agentId are extracted from 402 response.
+   * Requires Authorization header with Bearer token (nvmApiKey)
    */
   app.get("/api/task", async (req, res) => {
     const { task_id } = req.query;
@@ -280,12 +277,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!nvmApiKey) {
       return res.status(401).json({ error: "Missing API Key" });
     }
-    const planId =
-      (req.headers["x-plan-id"] as string) || process.env.PLAN_ID || "";
-    if (!planId) {
-      return res.status(500).json({ error: "Missing plan DID" });
-    }
-    const task = await getTask(task_id as string, nvmApiKey, planId);
+    const task = await getTask(task_id as string, nvmApiKey);
     res.json(task);
   });
 
